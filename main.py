@@ -81,7 +81,7 @@ def get_weight():
 
 
 # =============== GPIO через gpiod ===============
-chip = gpiod.Chip('gpiochip0')
+chip = gpiod.Chip('gpiochip1')
 
 button = chip.get_line(BUTTON_LINE)
 button.request(consumer="button", type=gpiod.LINE_REQ_DIR_IN)
