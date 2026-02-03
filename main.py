@@ -1,10 +1,12 @@
 import time
 import socket
 import struct
+import threading
 import OPi.GPIO as GPIO
 
 # ================= НАСТРОЙКИ =================
-BUTTON_PIN = 7          # номер пина (BOARD режим)
+BUTTON_PIN = 7
+OUTPUT_PIN = 11
 SCALE_IP = "192.168.4.137"
 SCALE_PORT = 5001
 
@@ -13,7 +15,6 @@ CMD_GET_WEIGHT = 0xA0
 CMD_WEIGHT_RESP = 0x10
 CMD_PING = 0x91
 CMD_PING_RESP = 0x51
-
 
 # =============== CRC (алгоритм 1С) ===============
 def crc16_1c(data: bytes) -> int:
@@ -81,15 +82,28 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
+# =============== ИМПУЛЬС НА ВЫХОД ===============
+def pulse_output(duration=1.0):
+    GPIO.output(OUTPUT_PIN, GPIO.HIGH)
+    time.sleep(duration)
+    GPIO.output(OUTPUT_PIN, GPIO.LOW)
+
+
+def pulse_output_async():
+    threading.Thread(target=pulse_output).start()
+
+
 # =============== GPIO НАСТРОЙКА ===============
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(OUTPUT_PIN, GPIO.OUT)
+GPIO.output(OUTPUT_PIN, GPIO.LOW)
 
 print("Система готова. Жду нажатия кнопки...")
 
 try:
     while True:
-        if GPIO.input(BUTTON_PIN) == GPIO.LOW:  # кнопка нажата
+        if GPIO.input(BUTTON_PIN) == GPIO.LOW:
             print("Кнопка нажата")
 
             if not check_connection():
@@ -97,17 +111,17 @@ try:
                 time.sleep(1)
                 continue
 
-            # ждём стабилизации
             for _ in range(10):
                 weight, stable = get_weight()
                 if stable:
                     print(f"Вес: {weight:.3f} кг (СТАБИЛЕН)")
+                    pulse_output_async()
                     break
                 time.sleep(0.3)
             else:
                 print("Вес не стабилизировался")
 
-            time.sleep(1)  # защита от дребезга
+            time.sleep(1)  # антидребезг
 
         time.sleep(0.05)
 
