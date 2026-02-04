@@ -2,10 +2,13 @@ import time
 import socket
 import struct
 import threading
-import gpiod#
+import gpiod
+from gpiod.line import Direction, Value
+from gpiod.line_settings import LineSettings
+from gpiod.line_config import LineConfig
 
 # ================= НАСТРОЙКИ =================
-SCALE_IP = "192.168.4.137"
+SCALE_IP = "192.168.0.100"
 SCALE_PORT = 5001
 
 BUTTON_LINE = 6   # PA6 (PIN 7)
@@ -82,25 +85,24 @@ def get_weight():
 # =============== GPIO (libgpiod v2) ===============
 chip = gpiod.Chip("/dev/gpiochip1")
 
+button_settings = LineSettings(direction=Direction.INPUT)
+output_settings = LineSettings(direction=Direction.OUTPUT,
+                               output_value=Value.INACTIVE)
+
+line_config = LineConfig()
+line_config.add_line_settings(BUTTON_LINE, button_settings)
+line_config.add_line_settings(OUTPUT_LINE, output_settings)
+
 request = chip.request_lines(
     consumer="scale_app",
-    config={
-        BUTTON_LINE: gpiod.LineSettings(
-            direction=gpiod.line.Direction.INPUT,
-            bias=gpiod.line.Bias.PULL_UP
-        ),
-        OUTPUT_LINE: gpiod.LineSettings(
-            direction=gpiod.line.Direction.OUTPUT,
-            output_value=gpiod.line.Value.INACTIVE
-        ),
-    },
+    config=line_config
 )
 
 def read_button():
     return request.get_value(BUTTON_LINE)
 
 def set_output(val: int):
-    request.set_value(OUTPUT_LINE, val)
+    request.set_value(OUTPUT_LINE, Value.ACTIVE if val else Value.INACTIVE)
 
 
 # =============== ИМПУЛЬС ===============
@@ -117,7 +119,7 @@ print("Система готова. Жду нажатия кнопки...")
 
 try:
     while True:
-        if read_button() == 0:  # нажата
+        if read_button() == Value.INACTIVE:  # кнопка на GND
             print("Кнопка нажата")
 
             if not check_connection():
@@ -135,7 +137,7 @@ try:
             else:
                 print("Вес не стабилизировался")
 
-            time.sleep(1)  # антидребезг
+            time.sleep(1)
 
         time.sleep(0.05)
 
