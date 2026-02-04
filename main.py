@@ -2,7 +2,7 @@ import time
 import socket
 import struct
 import threading
-import gpiod
+import gpiod#
 
 # ================= НАСТРОЙКИ =================
 SCALE_IP = "192.168.0.100"
