@@ -13,7 +13,6 @@ OUTPUT_LINE = 1   # PA1 (PIN 11)
 
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
-CMD_WEIGHT_RESP = 0x10
 CMD_PING = 0x91
 CMD_PING_RESP = 0x51
 
@@ -80,22 +79,35 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# =============== GPIO через gpiod ===============
-chip = gpiod.Chip('gpiochip1')
+# =============== GPIO (libgpiod v2) ===============
+chip = gpiod.Chip("/dev/gpiochip1")
 
-button = chip.get_line(BUTTON_LINE)
-button.request(consumer="button", type=gpiod.LINE_REQ_DIR_IN)
+request = chip.request_lines(
+    consumer="scale_app",
+    config={
+        BUTTON_LINE: gpiod.LineSettings(
+            direction=gpiod.line.Direction.INPUT,
+            bias=gpiod.line.Bias.PULL_UP
+        ),
+        OUTPUT_LINE: gpiod.LineSettings(
+            direction=gpiod.line.Direction.OUTPUT,
+            output_value=gpiod.line.Value.INACTIVE
+        ),
+    },
+)
 
-output = chip.get_line(OUTPUT_LINE)
-output.request(consumer="output", type=gpiod.LINE_REQ_DIR_OUT)
-output.set_value(0)
+def read_button():
+    return request.get_value(BUTTON_LINE)
+
+def set_output(val: int):
+    request.set_value(OUTPUT_LINE, val)
 
 
+# =============== ИМПУЛЬС ===============
 def pulse_output(duration=1.0):
-    output.set_value(1)
+    set_output(1)
     time.sleep(duration)
-    output.set_value(0)
-
+    set_output(0)
 
 def pulse_output_async():
     threading.Thread(target=pulse_output).start()
@@ -105,7 +117,7 @@ print("Система готова. Жду нажатия кнопки...")
 
 try:
     while True:
-        if button.get_value() == 0:  # кнопка на GND
+        if read_button() == 0:  # нажата
             print("Кнопка нажата")
 
             if not check_connection():
@@ -128,6 +140,5 @@ try:
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    output.set_value(0)
-    button.release()
-    output.release()
+    set_output(0)
+    request.release()
