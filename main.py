@@ -3,16 +3,14 @@ import socket
 import struct
 import threading
 import gpiod
-from gpiod.line import Direction, Value
-from gpiod.line_settings import LineSettings
-from gpiod.line_config import LineConfig
+from gpiod.line_request import DIRECTION_INPUT, DIRECTION_OUTPUT
 
 # ---------------- НАСТРОЙКИ ----------------
 SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
-BUTTON_LINE = 6    # PA6
-OUTPUT_LINE = 1    # PA1
+BUTTON_LINE = 6   # номер линии из gpioinfo
+OUTPUT_LINE = 1
 
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
@@ -36,8 +34,8 @@ def crc16_1c(data: bytes) -> int:
     return crc & 0xFFFF
 
 
-def build_packet(command: int, payload: bytes = b'') -> bytes:
-    body = bytes([command]) + payload
+def build_packet(cmd, payload=b''):
+    body = bytes([cmd]) + payload
     crc = crc16_1c(body)
     return HEADER + struct.pack('<H', len(body)) + body + struct.pack('<H', crc)
 
@@ -45,10 +43,10 @@ def build_packet(command: int, payload: bytes = b'') -> bytes:
 def recv_exact(sock, size):
     data = b''
     while len(data) < size:
-        chunk = sock.recv(size - len(data))
-        if not chunk:
-            raise ConnectionError("Связь разорвана")
-        data += chunk
+        part = sock.recv(size - len(data))
+        if not part:
+            raise ConnectionError("Разрыв связи")
+        data += part
     return data
 
 
@@ -85,26 +83,19 @@ def get_weight():
 # ---------------- GPIO ----------------
 chip = gpiod.Chip("/dev/gpiochip1")
 
-# Кнопка (отдельный запрос)
-btn_cfg = LineConfig()
-btn_cfg.add_line_settings(BUTTON_LINE, LineSettings(direction=Direction.INPUT))
-button_req = chip.request_lines(consumer="btn", config=btn_cfg)
+button = chip.get_line(BUTTON_LINE)
+button.request(consumer="button", type=DIRECTION_INPUT)
 
-# Выход (отдельный запрос)
-out_cfg = LineConfig()
-out_cfg.add_line_settings(
-    OUTPUT_LINE,
-    LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE)
-)
-output_req = chip.request_lines(consumer="out", config=out_cfg)
+output = chip.get_line(OUTPUT_LINE)
+output.request(consumer="output", type=DIRECTION_OUTPUT, default_vals=[0])
 
 
 def read_button():
-    return button_req.get_value(BUTTON_LINE)
+    return button.get_value()
 
 
-def set_output(val: int):
-    output_req.set_value(OUTPUT_LINE, Value.ACTIVE if val else Value.INACTIVE)
+def set_output(val):
+    output.set_value(val)
 
 
 # ---------------- ИМПУЛЬС ----------------
@@ -118,16 +109,16 @@ def pulse_async():
     threading.Thread(target=pulse).start()
 
 
-# ---------------- ОСНОВНОЙ ЦИКЛ ----------------
-print("Система запущена. Ожидание кнопки...")
+# ---------------- ЦИКЛ ----------------
+print("Готово. Ожидание кнопки...")
 
 try:
     while True:
-        if read_button() == 0:  # нажата
+        if read_button() == 0:
             print("Кнопка нажата")
 
             if not check_connection():
-                print("Весы не отвечают")
+                print("Весы недоступны")
                 time.sleep(1)
                 continue
 
