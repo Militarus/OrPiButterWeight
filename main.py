@@ -3,12 +3,16 @@ import socket
 import struct
 import threading
 import gpiod
+from gpiod.line import Direction, Value
+from gpiod.line_settings import LineSettings
+from gpiod.line_config import LineConfig
 
+# ---------------- НАСТРОЙКИ ----------------
 SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
-BUTTON_LINE = 6   # PA6
-OUTPUT_LINE = 1   # PA1
+BUTTON_LINE = 6    # PA6
+OUTPUT_LINE = 1    # PA1
 
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
@@ -16,7 +20,7 @@ CMD_PING = 0x91
 CMD_PING_RESP = 0x51
 
 
-# ================= CRC =================
+# ---------------- CRC ----------------
 def crc16_1c(data: bytes) -> int:
     crc = 0
     for byte in data:
@@ -34,9 +38,8 @@ def crc16_1c(data: bytes) -> int:
 
 def build_packet(command: int, payload: bytes = b'') -> bytes:
     body = bytes([command]) + payload
-    length = len(body)
     crc = crc16_1c(body)
-    return HEADER + struct.pack('<H', length) + body + struct.pack('<H', crc)
+    return HEADER + struct.pack('<H', len(body)) + body + struct.pack('<H', crc)
 
 
 def recv_exact(sock, size):
@@ -49,7 +52,7 @@ def recv_exact(sock, size):
     return data
 
 
-# ================= ВЕСЫ =================
+# ---------------- ВЕСЫ ----------------
 def check_connection():
     with socket.create_connection((SCALE_IP, SCALE_PORT), timeout=2) as sock:
         sock.sendall(build_packet(CMD_PING, b'\x04'))
@@ -79,61 +82,60 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# ================= GPIO =================
+# ---------------- GPIO ----------------
 chip = gpiod.Chip("/dev/gpiochip1")
 
-# --- КНОПКА ---
-button_request = chip.request_lines(
-    consumer="button",
-    config={
-        BUTTON_LINE: gpiod.LINE_REQ_DIR_IN
-    }
-)
+# Кнопка (отдельный запрос)
+btn_cfg = LineConfig()
+btn_cfg.add_line_settings(BUTTON_LINE, LineSettings(direction=Direction.INPUT))
+button_req = chip.request_lines(consumer="btn", config=btn_cfg)
 
-# --- ВЫХОД ---
-output_request = chip.request_lines(
-    consumer="output",
-    config={
-        OUTPUT_LINE: gpiod.LINE_REQ_DIR_OUT
-    }
+# Выход (отдельный запрос)
+out_cfg = LineConfig()
+out_cfg.add_line_settings(
+    OUTPUT_LINE,
+    LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE)
 )
-output_request.set_value(OUTPUT_LINE, 0)
+output_req = chip.request_lines(consumer="out", config=out_cfg)
 
 
 def read_button():
-    return button_request.get_value(BUTTON_LINE)
+    return button_req.get_value(BUTTON_LINE)
+
 
 def set_output(val: int):
-    output_request.set_value(OUTPUT_LINE, val)
+    output_req.set_value(OUTPUT_LINE, Value.ACTIVE if val else Value.INACTIVE)
 
 
-# ================= ИМПУЛЬС =================
-def pulse_output():
+# ---------------- ИМПУЛЬС ----------------
+def pulse():
     set_output(1)
     time.sleep(1)
     set_output(0)
 
-def pulse_output_async():
-    threading.Thread(target=pulse_output).start()
+
+def pulse_async():
+    threading.Thread(target=pulse).start()
 
 
-print("Система готова. Жду кнопку...")
+# ---------------- ОСНОВНОЙ ЦИКЛ ----------------
+print("Система запущена. Ожидание кнопки...")
 
 try:
     while True:
-        if read_button() == 0:
+        if read_button() == 0:  # нажата
             print("Кнопка нажата")
 
             if not check_connection():
-                print("Весы не на связи")
+                print("Весы не отвечают")
                 time.sleep(1)
                 continue
 
             for _ in range(10):
                 weight, stable = get_weight()
                 if stable:
-                    print(f"Вес: {weight:.3f} кг (СТАБИЛЕН)")
-                    pulse_output_async()
+                    print(f"Вес: {weight:.3f} кг")
+                    pulse_async()
                     break
                 time.sleep(0.3)
             else:
