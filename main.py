@@ -4,19 +4,19 @@ import struct
 import threading
 import gpiod
 
-# ================= НАСТРОЙКИ =================
-SCALE_IP = "192.168.4.136"
+SCALE_IP = "192.168.0.100"
 SCALE_PORT = 5001
 
-BUTTON_LINE = 6   # PA6 (PIN 7)
-OUTPUT_LINE = 1   # PA1 (PIN 11)
+BUTTON_LINE = 6   # PA6
+OUTPUT_LINE = 1   # PA1
 
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
 CMD_PING = 0x91
 CMD_PING_RESP = 0x51
 
-# =============== CRC =================
+
+# ================= CRC =================
 def crc16_1c(data: bytes) -> int:
     crc = 0
     for byte in data:
@@ -49,7 +49,7 @@ def recv_exact(sock, size):
     return data
 
 
-# =============== ВЕСЫ ===============
+# ================= ВЕСЫ =================
 def check_connection():
     with socket.create_connection((SCALE_IP, SCALE_PORT), timeout=2) as sock:
         sock.sendall(build_packet(CMD_PING, b'\x04'))
@@ -79,35 +79,45 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# =============== GPIO (твоя версия gpiod) ===============
+# ================= GPIO =================
 chip = gpiod.Chip("/dev/gpiochip1")
 
-button = chip.get_line(BUTTON_LINE)
-button.request(consumer="button", type=gpiod.LINE_REQ_DIR_IN)
+# --- КНОПКА ---
+button_request = chip.request_lines(
+    consumer="button",
+    config={
+        BUTTON_LINE: gpiod.LINE_REQ_DIR_IN
+    }
+)
 
-output = chip.get_line(OUTPUT_LINE)
-output.request(consumer="output", type=gpiod.LINE_REQ_DIR_OUT)
-output.set_value(0)
+# --- ВЫХОД ---
+output_request = chip.request_lines(
+    consumer="output",
+    config={
+        OUTPUT_LINE: gpiod.LINE_REQ_DIR_OUT
+    }
+)
+output_request.set_value(OUTPUT_LINE, 0)
 
 
 def read_button():
-    return button.get_value()
+    return button_request.get_value(BUTTON_LINE)
 
 def set_output(val: int):
-    output.set_value(val)
+    output_request.set_value(OUTPUT_LINE, val)
 
 
-# =============== ИМПУЛЬС ===============
-def pulse_output(duration=1.0):
+# ================= ИМПУЛЬС =================
+def pulse_output():
     set_output(1)
-    time.sleep(duration)
+    time.sleep(1)
     set_output(0)
 
 def pulse_output_async():
     threading.Thread(target=pulse_output).start()
 
 
-print("Система готова. Жду нажатия кнопки...")
+print("Система готова. Жду кнопку...")
 
 try:
     while True:
@@ -115,7 +125,7 @@ try:
             print("Кнопка нажата")
 
             if not check_connection():
-                print("Весы не на связи!")
+                print("Весы не на связи")
                 time.sleep(1)
                 continue
 
@@ -127,7 +137,7 @@ try:
                     break
                 time.sleep(0.3)
             else:
-                print("Вес не стабилизировался")
+                print("Вес не стабилен")
 
             time.sleep(1)
 
@@ -135,5 +145,3 @@ try:
 
 except KeyboardInterrupt:
     set_output(0)
-    button.release()
-    output.release()
