@@ -3,13 +3,12 @@ import socket
 import struct
 import threading
 import gpiod
-from gpiod.line_request import DIRECTION_INPUT, DIRECTION_OUTPUT
 
 # ---------------- НАСТРОЙКИ ----------------
 SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
-BUTTON_LINE = 6   # номер линии из gpioinfo
+BUTTON_LINE = 6
 OUTPUT_LINE = 1
 
 HEADER = b'\xF8\x55\xCE'
@@ -83,19 +82,30 @@ def get_weight():
 # ---------------- GPIO ----------------
 chip = gpiod.Chip("/dev/gpiochip1")
 
-button = chip.get_line(BUTTON_LINE)
-button.request(consumer="button", type=DIRECTION_INPUT)
+button_req = chip.request_lines(
+    consumer="button",
+    config={
+        "offsets": [BUTTON_LINE],
+        "direction": "input"
+    }
+)
 
-output = chip.get_line(OUTPUT_LINE)
-output.request(consumer="output", type=DIRECTION_OUTPUT, default_vals=[0])
+output_req = chip.request_lines(
+    consumer="output",
+    config={
+        "offsets": [OUTPUT_LINE],
+        "direction": "output",
+        "output_values": [0]
+    }
+)
 
 
 def read_button():
-    return button.get_value()
+    return button_req.get_values()[0]
 
 
 def set_output(val):
-    output.set_value(val)
+    output_req.set_values([val])
 
 
 # ---------------- ИМПУЛЬС ----------------
@@ -110,7 +120,7 @@ def pulse_async():
 
 
 # ---------------- ЦИКЛ ----------------
-print("Готово. Ожидание кнопки...")
+print("Система готова. Ожидание кнопки...")
 
 try:
     while True:
