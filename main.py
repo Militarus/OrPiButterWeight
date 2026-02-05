@@ -3,12 +3,9 @@ import socket
 import struct
 import threading
 import gpiod
-from gpiod.line import Direction, Value
-from gpiod.line_settings import LineSettings
-from gpiod.line_config import LineConfig
 
 # ================= НАСТРОЙКИ =================
-SCALE_IP = "192.168.0.100"
+SCALE_IP = "192.168.4.137"
 SCALE_PORT = 5001
 
 BUTTON_LINE = 6   # PA6 (PIN 7)
@@ -19,7 +16,7 @@ CMD_GET_WEIGHT = 0xA0
 CMD_PING = 0x91
 CMD_PING_RESP = 0x51
 
-# =============== CRC (алгоритм 1С) ===============
+# =============== CRC =================
 def crc16_1c(data: bytes) -> int:
     crc = 0
     for byte in data:
@@ -82,27 +79,21 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# =============== GPIO (libgpiod v2) ===============
-chip = gpiod.Chip("/dev/gpiochip1")
-
-button_settings = LineSettings(direction=Direction.INPUT)
-output_settings = LineSettings(direction=Direction.OUTPUT,
-                               output_value=Value.INACTIVE)
-
-line_config = LineConfig()
-line_config.add_line_settings(BUTTON_LINE, button_settings)
-line_config.add_line_settings(OUTPUT_LINE, output_settings)
-
-request = chip.request_lines(
+# =============== GPIO (твоя версия gpiod) ===============
+request = gpiod.request_lines(
+    "/dev/gpiochip1",
     consumer="scale_app",
-    config=line_config
+    config={
+        BUTTON_LINE: gpiod.LineSettings(direction=gpiod.Direction.INPUT),
+        OUTPUT_LINE: gpiod.LineSettings(direction=gpiod.Direction.OUTPUT, output_value=0),
+    },
 )
 
 def read_button():
     return request.get_value(BUTTON_LINE)
 
 def set_output(val: int):
-    request.set_value(OUTPUT_LINE, Value.ACTIVE if val else Value.INACTIVE)
+    request.set_value(OUTPUT_LINE, val)
 
 
 # =============== ИМПУЛЬС ===============
@@ -119,7 +110,7 @@ print("Система готова. Жду нажатия кнопки...")
 
 try:
     while True:
-        if read_button() == Value.INACTIVE:  # кнопка на GND
+        if read_button() == 0:  # кнопка нажата
             print("Кнопка нажата")
 
             if not check_connection():
