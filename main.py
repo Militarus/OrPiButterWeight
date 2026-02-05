@@ -4,7 +4,7 @@ import struct
 import threading
 import gpiod
 
-SCALE_IP = "192.168.0.100"
+SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
 BUTTON_LINE = 6   # PA6
