@@ -84,7 +84,17 @@ def read_button():
         ["gpioget", "gpiochip1", str(BUTTON_LINE)],
         capture_output=True, text=True
     )
-    return int(result.stdout.strip())
+
+    if result.returncode != 0:
+        print("Ошибка gpioget:", result.stderr.strip())
+        return 1  # считаем кнопку НЕ нажатой
+
+    val = result.stdout.strip()
+    if val not in ("0", "1"):
+        print("Неожиданный ответ gpioget:", val)
+        return 1
+
+    return int(val)
 
 
 def set_output(val):
