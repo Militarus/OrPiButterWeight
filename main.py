@@ -4,9 +4,9 @@ import struct
 import threading
 import gpiod
 
+# ===== НАСТРОЙКИ =====
 SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
-
 BUTTON_LINE = 6
 OUTPUT_LINE = 1
 
@@ -16,7 +16,7 @@ CMD_PING = 0x91
 CMD_PING_RESP = 0x51
 
 
-# ---------------- CRC ----------------
+# ===== CRC =====
 def crc16_1c(data: bytes) -> int:
     crc = 0
     for byte in data:
@@ -48,7 +48,7 @@ def recv_exact(sock, size):
     return data
 
 
-# ---------------- ВЕСЫ ----------------
+# ===== ВЕСЫ =====
 def check_connection():
     with socket.create_connection((SCALE_IP, SCALE_PORT), timeout=2) as sock:
         sock.sendall(build_packet(CMD_PING, b'\x04'))
@@ -78,34 +78,31 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# ---------------- GPIO ----------------
+# ===== GPIO (libgpiod v2) =====
 chip = gpiod.Chip("/dev/gpiochip1")
 
-# КНОПКА (input)
+# Кнопка
 button_req = chip.request_lines(
-    [BUTTON_LINE],
     consumer="button",
-    type=gpiod.LINE_REQ_DIR_IN
+    config={BUTTON_LINE: {"direction": "input"}}
 )
 
-# ВЫХОД (output)
+# Выход
 output_req = chip.request_lines(
-    [OUTPUT_LINE],
     consumer="output",
-    type=gpiod.LINE_REQ_DIR_OUT,
-    default_vals=[0]
+    config={OUTPUT_LINE: {"direction": "output", "output_value": 0}}
 )
 
 
 def read_button():
-    return button_req.get_values()[0]
+    return button_req.get_value(BUTTON_LINE)
 
 
 def set_output(val):
-    output_req.set_values([val])
+    output_req.set_value(OUTPUT_LINE, val)
 
 
-# ---------------- ИМПУЛЬС ----------------
+# ===== ИМПУЛЬС =====
 def pulse():
     set_output(1)
     time.sleep(1)
@@ -116,7 +113,7 @@ def pulse_async():
     threading.Thread(target=pulse).start()
 
 
-# ---------------- ЦИКЛ ----------------
+# ===== ЦИКЛ =====
 print("Система готова. Ожидание кнопки...")
 
 try:
