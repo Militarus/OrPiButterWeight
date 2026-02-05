@@ -4,7 +4,6 @@ import struct
 import threading
 import gpiod
 
-# ---------------- НАСТРОЙКИ ----------------
 SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
@@ -82,21 +81,19 @@ def get_weight():
 # ---------------- GPIO ----------------
 chip = gpiod.Chip("/dev/gpiochip1")
 
+# КНОПКА (input)
 button_req = chip.request_lines(
+    [BUTTON_LINE],
     consumer="button",
-    config={
-        "offsets": [BUTTON_LINE],
-        "direction": "input"
-    }
+    type=gpiod.LINE_REQ_DIR_IN
 )
 
+# ВЫХОД (output)
 output_req = chip.request_lines(
+    [OUTPUT_LINE],
     consumer="output",
-    config={
-        "offsets": [OUTPUT_LINE],
-        "direction": "output",
-        "output_values": [0]
-    }
+    type=gpiod.LINE_REQ_DIR_OUT,
+    default_vals=[0]
 )
 
 
