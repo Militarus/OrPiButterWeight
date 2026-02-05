@@ -5,7 +5,7 @@ import threading
 import gpiod
 
 # ================= НАСТРОЙКИ =================
-SCALE_IP = "192.168.4.137"
+SCALE_IP = "192.168.4.136"
 SCALE_PORT = 5001
 
 BUTTON_LINE = 6   # PA6 (PIN 7)
@@ -80,20 +80,21 @@ def get_weight():
 
 
 # =============== GPIO (твоя версия gpiod) ===============
-request = gpiod.request_lines(
-    "/dev/gpiochip1",
-    consumer="scale_app",
-    config={
-        BUTTON_LINE: gpiod.LineSettings(direction=gpiod.Direction.INPUT),
-        OUTPUT_LINE: gpiod.LineSettings(direction=gpiod.Direction.OUTPUT, output_value=0),
-    },
-)
+chip = gpiod.Chip("/dev/gpiochip1")
+
+button = chip.get_line(BUTTON_LINE)
+button.request(consumer="button", type=gpiod.LINE_REQ_DIR_IN)
+
+output = chip.get_line(OUTPUT_LINE)
+output.request(consumer="output", type=gpiod.LINE_REQ_DIR_OUT)
+output.set_value(0)
+
 
 def read_button():
-    return request.get_value(BUTTON_LINE)
+    return button.get_value()
 
 def set_output(val: int):
-    request.set_value(OUTPUT_LINE, val)
+    output.set_value(val)
 
 
 # =============== ИМПУЛЬС ===============
@@ -110,7 +111,7 @@ print("Система готова. Жду нажатия кнопки...")
 
 try:
     while True:
-        if read_button() == 0:  # кнопка нажата
+        if read_button() == 0:
             print("Кнопка нажата")
 
             if not check_connection():
@@ -134,4 +135,5 @@ try:
 
 except KeyboardInterrupt:
     set_output(0)
-    request.release()
+    button.release()
+    output.release()
