@@ -1,14 +1,23 @@
+import OPi.GPIO as GPIO
 import time
 import socket
 import struct
 import threading
-import subprocess
 
-SCALE_IP = "192.168.4.136"
+# ================= GPIO =================
+GPIO.setboard(GPIO.ZERO2W)
+GPIO.setmode(GPIO.BOARD)
+
+BUTTON_PIN = 7     # кнопка
+OUTPUT_PIN = 11    # выход
+
+GPIO.setup(BUTTON_PIN, GPIO.IN)
+GPIO.setup(OUTPUT_PIN, GPIO.OUT)
+GPIO.output(OUTPUT_PIN, GPIO.LOW)
+
+# ================= ВЕСЫ =================
+SCALE_IP = "192.168.4.137"
 SCALE_PORT = 5001
-
-BUTTON_LINE = 6
-OUTPUT_LINE = 1
 
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
@@ -48,15 +57,18 @@ def recv_exact(sock, size):
     return data
 
 
-# ================= ВЕСЫ =================
+# ================= СВЯЗЬ =================
 def check_connection():
-    with socket.create_connection((SCALE_IP, SCALE_PORT), timeout=2) as sock:
-        sock.sendall(build_packet(CMD_PING, b'\x04'))
-        recv_exact(sock, 3)
-        length = struct.unpack('<H', recv_exact(sock, 2))[0]
-        body = recv_exact(sock, length)
-        crc_recv = struct.unpack('<H', recv_exact(sock, 2))[0]
-        return body[0] == CMD_PING_RESP and crc16_1c(body) == crc_recv
+    try:
+        with socket.create_connection((SCALE_IP, SCALE_PORT), timeout=2) as sock:
+            sock.sendall(build_packet(CMD_PING, b'\x04'))
+            recv_exact(sock, 3)
+            length = struct.unpack('<H', recv_exact(sock, 2))[0]
+            body = recv_exact(sock, length)
+            crc_recv = struct.unpack('<H', recv_exact(sock, 2))[0]
+            return body[0] == CMD_PING_RESP and crc16_1c(body) == crc_recv
+    except:
+        return False
 
 
 def get_weight():
@@ -78,47 +90,23 @@ def get_weight():
         return weight_raw * div_map.get(division, 1), bool(stable)
 
 
-# ================= GPIO через CLI =================
-def read_button():
-    result = subprocess.run(
-        ["gpioget", "gpiochip1", str(BUTTON_LINE)],
-        capture_output=True, text=True
-    )
-
-    if result.returncode != 0:
-        print("Ошибка gpioget:", result.stderr.strip())
-        return 1  # считаем кнопку НЕ нажатой
-
-    val = result.stdout.strip()
-    if val not in ("0", "1"):
-        print("Неожиданный ответ gpioget:", val)
-        return 1
-
-    return int(val)
-
-
-def set_output(val):
-    subprocess.run(
-        ["gpioset", "gpiochip1", f"{OUTPUT_LINE}={val}"]
-    )
-
-
+# ================= ВЫХОД =================
 def pulse():
-    set_output(1)
+    GPIO.output(OUTPUT_PIN, GPIO.HIGH)
     time.sleep(1)
-    set_output(0)
+    GPIO.output(OUTPUT_PIN, GPIO.LOW)
 
 
 def pulse_async():
     threading.Thread(target=pulse).start()
 
 
-# ================= ЦИКЛ =================
+# ================= ОСНОВНОЙ ЦИКЛ =================
 print("Система готова. Ожидание кнопки...")
 
 try:
     while True:
-        if read_button() == 0:
+        if GPIO.input(BUTTON_PIN) == GPIO.LOW:
             print("Кнопка нажата")
 
             if not check_connection():
@@ -129,7 +117,7 @@ try:
             for _ in range(10):
                 weight, stable = get_weight()
                 if stable:
-                    print(f"Вес: {weight:.3f} кг")
+                    print(f"Вес: {weight:.3f} кг (стабилен)")
                     pulse_async()
                     break
                 time.sleep(0.3)
@@ -141,4 +129,4 @@ try:
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    set_output(0)
+    GPIO.cleanup()
