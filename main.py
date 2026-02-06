@@ -126,7 +126,7 @@ try:
 
             time.sleep(1)
 
-        time.sleep(0.05)
+        time.sleep(0.06)
 
 except KeyboardInterrupt:
     GPIO.cleanup()
