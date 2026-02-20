@@ -3,7 +3,7 @@ import time
 import RPi.GPIO as GPIO
 
 # ================= НАСТРОЙКИ =================
-SCALE_IP = "192.168.4.137"
+SCALE_IP = "10.10.1.80"
 SCALE_PORT = 5001
 
 DEVICE_ADDR = 0x01
