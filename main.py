@@ -77,6 +77,6 @@ def get_weight(ip: str, port: int = 5001):
 
 
 if __name__ == "__main__":
-    w = get_weight("192.168.0.100")
+    w = get_weight("10.10.1.80")
     print("Вес:", w["weight"])
     print("Стабилен:", w["stable"])
