@@ -62,7 +62,7 @@ def build_weight_request() -> bytes:
     frame = bytes([
         0x02,              # STX
         DEVICE_ADDR,       # адрес
-        0xA0,              # команда R 0x52
+        0x23,              # команда R 0x52
         0x03               # ETX
     ])
     return append_crc(frame)
