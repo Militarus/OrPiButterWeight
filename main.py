@@ -4,6 +4,8 @@ import struct
 HEADER = b'\xF8\x55\xCE'
 CMD_GET_WEIGHT = 0xA0
 CMD_WEIGHT_RESP = 0x10
+CMD_PING = 0x91
+CMD_PING_RESP = 0x51
 
 
 # --- CRC из документа 1С ---
@@ -75,8 +77,30 @@ def get_weight(ip: str, port: int = 5001):
             "division_code": division
         }
 
+def check_connection(ip: str, port: int = 5001, timeout=3) -> bool:
+    with socket.create_connection((ip, port), timeout=timeout) as sock:
+        # у команды есть дополнительный байт 0x04
+        payload = b'\x04'
+        sock.sendall(build_packet(CMD_PING, payload))
+
+        if recv_exact(sock, 3) != HEADER:
+            raise RuntimeError("Неверный заголовок ответа")
+
+        length = struct.unpack('<H', recv_exact(sock, 2))[0]
+        body = recv_exact(sock, length)
+        crc_recv = struct.unpack('<H', recv_exact(sock, 2))[0]
+
+        if crc16_1c(body) != crc_recv:
+            raise RuntimeError("CRC не совпал при проверке связи")
+
+        return body[0] == CMD_PING_RESP
 
 if __name__ == "__main__":
-    w = get_weight("10.10.1.80")
-    print("Вес:", w["weight"])
-    print("Стабилен:", w["stable"])
+    ip = "10.10.1.80"
+
+    if check_connection(ip):
+        print("Весы на связи ✅")
+        w = get_weight(ip)
+        print("Вес:", w["weight"], "кг")
+    else:
+        print("Весы не ответили ❌")
